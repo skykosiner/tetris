@@ -4,11 +4,13 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
 )
 
 type TCP struct {
 	Listener    net.Listener
 	Connections []net.Conn
+	Mutex       sync.Mutex
 }
 
 func (t *TCP) Start() {
@@ -29,13 +31,19 @@ func (t *TCP) Start() {
 			continue
 		}
 
+		t.Mutex.Lock()
 		t.Connections = append(t.Connections, conn)
+		t.Mutex.Unlock()
+
 		go t.handleConnection(conn)
 	}
 }
 
 func (t *TCP) handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		t.removeConnection(conn)
+		conn.Close()
+	}()
 
 	buffer := make([]byte, 1024)
 	for {
@@ -59,6 +67,18 @@ func (t *TCP) ToAll(msg string) {
 		_, err := connection.Write([]byte(msg))
 		if err != nil {
 			log.Println("Error writing to connection: ", err)
+		}
+	}
+}
+
+func (t *TCP) removeConnection(conn net.Conn) {
+	t.Mutex.Lock()
+	defer t.Mutex.Unlock()
+
+	for i, connection := range t.Connections {
+		if connection == conn {
+			t.Connections = append(t.Connections[:i], t.Connections[i+1:]...)
+			break
 		}
 	}
 }
