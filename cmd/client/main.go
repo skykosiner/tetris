@@ -1,37 +1,108 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"log"
-	"net"
 	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/skykosiner/tetris/pkg/game"
 )
 
+type model struct {
+	choices  []string         // items on the to-do list
+	cursor   int              // which to-do list item our cursor is pointing at
+	selected map[int]struct{} // which to-do items are selected
+	game     game.Game
+}
+
+func initialModel(game game.Game) model {
+	return model{
+		// Our to-do list is a grocery list
+		choices: []string{"Start Game.", "Join Game."},
+		game:    game,
+
+		// A map which indicates which choices are selected. We're using
+		// the  map like a mathematical set. The keys refer to the indexes
+		// of the `choices` slice, above.
+		selected: make(map[int]struct{}),
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	// Just return `nil`, which means "no I/O right now, please."
+	return nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+
+	// Is it a key press?
+	case tea.KeyMsg:
+
+		// Cool, what was the actual key pressed?
+		switch msg.String() {
+
+		// These keys should exit the program.
+		case "ctrl+c", "q":
+			return m, tea.Quit
+
+		// The "up" and "k" keys move the cursor up
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+
+		// The "down" and "j" keys move the cursor down
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+
+		// The "enter" key and the spacebar (a literal space) toggle
+		// the selected state for the item that the cursor is pointing at.
+		case "enter", " ":
+			if m.cursor == 0 {
+				m.game.Create()
+				fmt.Println("The uuid is", m.game.Id)
+			} else if m.cursor == 1 {
+			}
+		}
+	}
+
+	// Return the updated model to the Bubble Tea runtime for processing.
+	// Note that we're not returning a command.
+	return m, nil
+}
+
+func (m model) View() string {
+	s := ""
+
+	// Iterate over our choices
+	for i, choice := range m.choices {
+
+		// Is the cursor pointing at this choice?
+		cursor := " " // no cursor
+		if m.cursor == i {
+			cursor = ">" // cursor!
+		}
+
+		// Render the row
+		s += fmt.Sprintf("%s %s\n", cursor, choice)
+	}
+
+	// The footer
+	s += "\nPress q to quit.\n"
+
+	// Send the UI for rendering
+	return s
+}
+
 func main() {
-	conn, err := net.Dial("tcp", "localhost:42069")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
+	var game game.Game
 
-	fmt.Println("Connected to the server. Type your message and press Enter to send. Type 'exit' to close the connection.")
-
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		message := scanner.Text()
-		if message == "exit" {
-			fmt.Println("Closing connection.")
-			break
-		}
-
-		_, err = conn.Write([]byte(message))
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+	p := tea.NewProgram(initialModel(game))
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
 	}
 }
